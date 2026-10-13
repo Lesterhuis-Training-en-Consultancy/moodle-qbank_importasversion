@@ -16,8 +16,6 @@
 
 namespace qbank_importasversion\form;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Form to import many questions from one file, each as a new version of an existing question.
  *

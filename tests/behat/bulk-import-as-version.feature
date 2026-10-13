@@ -22,16 +22,14 @@ Feature: Importing many questions as new versions of existing questions
       | Test questions   | truefalse | First one  | TQ-1     |
       | Test questions   | truefalse | Second one | TQ-2     |
 
-  Scenario: The bulk import is in the question bank navigation
-    When I am on the "Course 1" "core_question > course question bank" page logged in as teacher
-    And I select "Import new versions in bulk" from the "Question bank tertiary navigation" singleselect
+  Scenario: The bulk import page shows the form
+    When I am on the "Course 1" "qbank_importasversion > course bulk import" page logged in as teacher
     Then I should see "Import many questions from one Moodle XML file at once"
     And "Preview" "button" should exist
 
   @javascript @_file_upload
   Scenario: The dry run shows what would happen and saves nothing
-    When I am on the "Course 1" "core_question > course question bank" page logged in as teacher
-    And I select "Import new versions in bulk" from the "Question bank tertiary navigation" singleselect
+    When I am on the "Course 1" "qbank_importasversion > course bulk import" page logged in as teacher
     And I upload "question/bank/importasversion/tests/fixtures/bulk-new-versions.xml" file to "Import" filemanager
     And I press "Preview"
     Then I should see "Dry run: nothing has been saved yet"
@@ -43,8 +41,7 @@ Feature: Importing many questions as new versions of existing questions
 
   @javascript @_file_upload
   Scenario: Confirming the dry run imports the questions as new versions
-    When I am on the "Course 1" "core_question > course question bank" page logged in as teacher
-    And I select "Import new versions in bulk" from the "Question bank tertiary navigation" singleselect
+    When I am on the "Course 1" "qbank_importasversion > course bulk import" page logged in as teacher
     And I upload "question/bank/importasversion/tests/fixtures/bulk-new-versions.xml" file to "Import" filemanager
     And I press "Preview"
     And I press "Import as new versions (2)"

@@ -102,7 +102,12 @@ if ($execute) {
 
 echo $OUTPUT->header();
 $renderer = $PAGE->get_renderer('core_question', 'bank');
-echo $renderer->render(new \core_question\output\qbank_action_menu($thispageurl));
+if (class_exists('\core_question\output\qbank_action_menu')) {
+    echo $renderer->render(new \core_question\output\qbank_action_menu($thispageurl));
+} else if (class_exists('\core_question\output\qbank_actionbar')) {
+    // Moodle 4.0 to 4.2.
+    echo $renderer->render(new \core_question\output\qbank_actionbar($thispageurl));
+}
 echo $OUTPUT->heading($title);
 
 if ($options === null) {
@@ -162,12 +167,10 @@ if ($execute) {
         }
         $confirmurl->param('matchgrades', $options['matchgrades']);
         $label = get_string('confirmimport', 'qbank_importasversion', $counts[bulk_importer::OUTCOME_NEWVERSION]);
-        // The primary option is deprecated from Moodle 4.4; older versions ignore the type option.
+        // From Moodle 4.5 the button can be primary. The older option for that is deprecated and gives a debugging message.
         $buttonoptions = [];
         if (defined('\core\output\single_button::BUTTON_PRIMARY')) {
             $buttonoptions['type'] = \core\output\single_button::BUTTON_PRIMARY;
-        } else {
-            $buttonoptions['primary'] = true;
         }
         $buttons .= $OUTPUT->single_button($confirmurl, $label, 'post', $buttonoptions);
     }
