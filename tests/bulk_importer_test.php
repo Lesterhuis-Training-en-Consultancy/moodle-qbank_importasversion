@@ -62,18 +62,18 @@ final class bulk_importer_test extends \advanced_testcase {
     /**
      * Set up an importer the way the core import page does.
      *
-     * @param bool $catfromfile whether to take the category from the file.
-     * @param bool $stoponerror whether to stop when the file has errors.
+     * @param array $options catfromfile (default false): take the category from the file;
+     *      stoponerror (default true): stop when the file has errors.
      * @return bulk_importer
      */
-    private function create_importer(bool $catfromfile = false, bool $stoponerror = true): bulk_importer {
+    private function create_importer(array $options = []): bulk_importer {
         $importer = new bulk_importer();
         $importer->setCategory($this->category);
         $importer->setContexts([\context::instance_by_id($this->category->contextid)]);
-        $importer->setCatfromfile($catfromfile);
+        $importer->setCatfromfile($options['catfromfile'] ?? false);
         $importer->setContextfromfile(false);
         $importer->setMatchgrades('error');
-        $importer->setStoponerror($stoponerror);
+        $importer->setStoponerror($options['stoponerror'] ?? true);
         return $importer;
     }
 
@@ -261,7 +261,7 @@ final class bulk_importer_test extends \advanced_testcase {
             self::truefalse_xml('ID-A', 'In the right category'),
         ]);
 
-        $result = $this->create_importer(true)->run($file, true);
+        $result = $this->create_importer(['catfromfile' => true])->run($file, true);
 
         $this->assertSame(
             [bulk_importer::OUTCOME_SKIPPED, bulk_importer::OUTCOME_IMPORTED],
@@ -280,7 +280,7 @@ final class bulk_importer_test extends \advanced_testcase {
         // The category in the file does not exist, but it is ignored.
         $file = $this->write_file([self::category_xml('Missing'), self::truefalse_xml('ID-A', 'New')]);
 
-        $result = $this->create_importer(false)->run($file, true);
+        $result = $this->create_importer()->run($file, true);
 
         $this->assertSame([bulk_importer::OUTCOME_IMPORTED], array_column($result->rows, 'outcome'));
         $this->assertSame(2, $this->latest_version($a->questionbankentryid));
@@ -308,13 +308,13 @@ final class bulk_importer_test extends \advanced_testcase {
         // 42% is not a valid answer grade.
         $file = $this->write_file([self::truefalse_xml('ID-A', 'New'), self::shortanswer_xml('ID-S', '42')]);
 
-        $result = $this->create_importer(false, true)->run($file, true);
+        $result = $this->create_importer()->run($file, true);
 
         $this->assertTrue($result->blocked);
         $this->assertSame(1, $this->latest_version($a->questionbankentryid));
 
         // Without stop on error the same file imports the valid question and skips the invalid one.
-        $result = $this->create_importer(false, false)->run($file, true);
+        $result = $this->create_importer(['stoponerror' => false])->run($file, true);
 
         $this->assertFalse($result->blocked);
         $this->assertSame(

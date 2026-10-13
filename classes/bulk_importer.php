@@ -97,7 +97,8 @@ class bulk_importer extends qformat_xml {
     /**
      * Collect parse errors instead of printing them, so the caller decides how to show them.
      *
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter) The signature is that of the core method.
+     * The signature is that of the core method, so $text is not used: it is the offending text from the file,
+     * which we do not show.
      *
      * @param string $message the error message.
      * @param string $text the offending text, if any.
