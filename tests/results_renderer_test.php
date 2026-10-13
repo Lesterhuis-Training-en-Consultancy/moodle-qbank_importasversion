@@ -73,8 +73,8 @@ final class results_renderer_test extends \advanced_testcase {
                 $checked++;
             }
         }
-        // 4 outcomes and 9 reasons: fails if the constants are not found at all.
-        $this->assertSame(13, $checked);
+        // 4 outcomes and 10 reasons: fails if the constants are not found at all.
+        $this->assertSame(14, $checked);
     }
 
     /**

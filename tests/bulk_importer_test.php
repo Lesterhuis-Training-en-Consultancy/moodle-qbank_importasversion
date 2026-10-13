@@ -315,6 +315,11 @@ final class bulk_importer_test extends \advanced_testcase {
         $result = $this->create_importer()->run($file, true);
 
         $this->assertTrue($result->blocked);
+        // A question that could be imported says that it is not, and why.
+        $this->assertSame(
+            [bulk_importer::REASON_BLOCKED, bulk_importer::REASON_INVALIDGRADES],
+            array_column($result->rows, 'reason')
+        );
         $this->assertSame(1, $this->latest_version($a->questionbankentryid));
 
         // Without stop on error the same file imports the valid question and skips the invalid one.

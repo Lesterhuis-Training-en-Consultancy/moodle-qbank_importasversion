@@ -85,6 +85,9 @@ class bulk_importer extends qformat_xml {
     /** @var string The question has an answer grade that is not valid. */
     public const REASON_INVALIDGRADES = 'invalidgrades';
 
+    /** @var string The question could be imported, but "Stop on error" is on and the file has errors. */
+    public const REASON_BLOCKED = 'blocked';
+
     /** @var string[] Parse errors, collected here instead of being printed. */
     protected $parseerrors = [];
 
@@ -153,6 +156,9 @@ class bulk_importer extends qformat_xml {
         $result->blocked = false;
         $result->rows = $this->classify($questions, $result);
         unset($questions);
+        if ($result->blocked) {
+            $this->block_rows($result->rows);
+        }
         if (!$result->blocked && $execute) {
             $this->save_rows($result->rows, $mergetags, $force);
         }
@@ -348,6 +354,21 @@ class bulk_importer extends qformat_xml {
                 unset($row->existing, $row->question);
             }
             unset($row->key);
+        }
+    }
+
+    /**
+     * When "Stop on error" blocks the import, no question will be imported: say so in the rows.
+     *
+     * @param stdClass[] $rows the rows.
+     */
+    protected function block_rows(array $rows): void {
+        foreach ($rows as $row) {
+            if ($row->outcome === self::OUTCOME_NEWVERSION) {
+                $row->outcome = self::OUTCOME_SKIPPED;
+                $row->reason = self::REASON_BLOCKED;
+                unset($row->existing, $row->question);
+            }
         }
     }
 

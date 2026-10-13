@@ -61,6 +61,7 @@ $string['questionimportedasversion'] = 'New version of question \'{$a}\' importe
 $string['questionimportedwithwarnings'] = 'New version of question \'{$a->name}\' imported successfully. However, an issue was raised: {$a->notice}';
 $string['questionimportfailed'] = 'Question import failed for \'{$a->name}\'. {$a->error}';
 $string['reason_ambiguous'] = 'More than one question in the category has this ID number';
+$string['reason_blocked'] = 'Not imported: the file has errors and Stop on error is on';
 $string['reason_categoryambiguous'] = 'More than one category matches the category in the file';
 $string['reason_categorynotfound'] = 'The category in the file does not exist';
 $string['reason_duplicateinfile'] = 'This category and ID number occur more than once in the file';
