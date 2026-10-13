@@ -142,7 +142,7 @@ class bulk_importer extends qformat_xml {
             return $result;
         }
 
-        // readquestions() expects at least one question element.
+        // Check for at least one question element, which readquestions() needs.
         $hasquestions = stripos(implode('', $lines), '<question') !== false;
         $questions = $hasquestions ? $this->readquestions($lines) : false;
         unset($lines);
