@@ -43,11 +43,40 @@ class behat_qbank_importasversion extends behat_base {
             case 'course bulk import':
                 return new moodle_url(
                     '/question/bank/importasversion/bulkimport.php',
-                    ['courseid' => $this->get_course_id($identifier)]
+                    $this->get_question_bank_params($this->get_course_id($identifier))
                 );
 
             default:
                 throw new Exception('Unrecognised qbank_importasversion page type "' . $type . '."');
         }
+    }
+
+    /**
+     * The parameters that identify the question bank of a course on a question bank page.
+     *
+     * From Moodle 5.0 the question bank of a course is an activity (mod_qbank), and its pages need the cmid.
+     * Before that they need the course id.
+     *
+     * @param int $courseid the course id.
+     * @return array the page parameters.
+     */
+    protected function get_question_bank_params(int $courseid): array {
+        global $DB;
+
+        if (core_component::get_component_directory('mod_qbank')) {
+            $cmid = $DB->get_field_sql(
+                'SELECT cm.id
+                   FROM {course_modules} cm
+                   JOIN {modules} m ON m.id = cm.module
+                  WHERE m.name = :name AND cm.course = :course
+               ORDER BY cm.id',
+                ['name' => 'qbank', 'course' => $courseid],
+                IGNORE_MULTIPLE
+            );
+            if ($cmid) {
+                return ['cmid' => $cmid];
+            }
+        }
+        return ['courseid' => $courseid];
     }
 }

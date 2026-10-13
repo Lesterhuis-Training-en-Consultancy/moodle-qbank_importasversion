@@ -155,7 +155,7 @@ if ($result->rows) {
 
 if ($execute) {
     // The file has been used. Removing it means that reloading this page cannot import it a second time.
-    file_clear_draft_area($options['itemid']);
+    get_file_storage()->delete_area_files(context_user::instance($USER->id)->id, 'user', 'draft', $options['itemid']);
     echo $OUTPUT->continue_button($returnurl);
 } else {
     $counts = bulk_importer::count_outcomes($result->rows);
