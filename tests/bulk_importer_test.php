@@ -301,7 +301,7 @@ final class bulk_importer_test extends \advanced_testcase {
     }
 
     /**
-     * Stop on error blocks the whole import.
+     * With stop on error an invalid grade blocks the whole import, without it only that question is skipped.
      */
     public function test_stop_on_error_blocks_the_whole_import(): void {
         $a = $this->create_existing('ID-A');
@@ -312,15 +312,8 @@ final class bulk_importer_test extends \advanced_testcase {
 
         $this->assertTrue($result->blocked);
         $this->assertSame(1, $this->latest_version($a->questionbankentryid));
-    }
 
-    /**
-     * Without stop on error only the invalid question is skipped.
-     */
-    public function test_without_stop_on_error_only_the_invalid_question_is_skipped(): void {
-        $a = $this->create_existing('ID-A');
-        $file = $this->write_file([self::truefalse_xml('ID-A', 'New'), self::shortanswer_xml('ID-S', '42')]);
-
+        // Without stop on error the same file imports the valid question and skips the invalid one.
         $result = $this->create_importer(false, false)->run($file, true);
 
         $this->assertFalse($result->blocked);

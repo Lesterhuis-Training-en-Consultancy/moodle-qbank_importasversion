@@ -88,11 +88,16 @@ class bulk_importer extends qformat_xml {
     /** @var string[] Parse errors, collected here instead of being printed. */
     protected $parseerrors = [];
 
-    /** @var array[] Existing entries per category id, then per idnumber. */
-    protected $entrycache = [];
+    /** @var category_finder Finds the category for a path from the file. */
+    protected $finder;
+
+    /** @var question_matcher Finds the existing question for a question from the file. */
+    protected $matcher;
 
     /**
      * Collect parse errors instead of printing them, so the caller decides how to show them.
+     *
+     * @SuppressWarnings(PHPMD.UnusedFormalParameter) The signature is that of the core method.
      *
      * @param string $message the error message.
      * @param string $text the offending text, if any.
@@ -126,50 +131,29 @@ class bulk_importer extends qformat_xml {
         raise_memory_limit(MEMORY_EXTRA);
 
         $this->displayprogress = false;
-        $this->parseerrors = [];
         $this->importerrors = 0;
-        $this->entrycache = [];
+        $this->finder = new category_finder(
+            context::instance_by_id($this->category->contextid),
+            (bool) $this->contextfromfile,
+            $this->translator
+        );
+        $this->matcher = new question_matcher();
 
         $result = new stdClass();
         $result->rows = [];
         $result->errors = [];
+        $result->blocked = true;
+
+        $questions = $this->read_questions($file, $result);
+        if ($questions === null) {
+            return $result;
+        }
+
         $result->blocked = false;
-
-        $lines = $this->readdata($file);
-        if (!$lines) {
-            $result->errors[] = get_string('cannotread', 'question');
-            $result->blocked = true;
-            return $result;
-        }
-
-        // Check for at least one question element, which readquestions() needs.
-        $hasquestions = stripos(implode('', $lines), '<question') !== false;
-        $questions = $hasquestions ? $this->readquestions($lines) : false;
-        unset($lines);
-        $result->errors = $this->parseerrors;
-        if (!$questions) {
-            if (!$result->errors) {
-                $result->errors[] = get_string('noquestionsinfile', 'question');
-            }
-            $result->blocked = true;
-            return $result;
-        }
-        if ($this->stoponerror && $this->importerrors > 0) {
-            $result->blocked = true;
-            return $result;
-        }
-
         $result->rows = $this->classify($questions, $result);
         unset($questions);
-        if ($result->blocked || !$execute) {
-            return $result;
-        }
-
-        foreach ($result->rows as $row) {
-            if ($row->outcome === self::OUTCOME_NEWVERSION) {
-                $this->save_row($row, $mergetags, $force);
-            }
-            unset($row->existing, $row->question);
+        if (!$result->blocked && $execute) {
+            $this->save_rows($result->rows, $mergetags, $force);
         }
         return $result;
     }
@@ -194,6 +178,38 @@ class bulk_importer extends qformat_xml {
     }
 
     /**
+     * Read and parse the file.
+     *
+     * @param string $file path of the Moodle XML file.
+     * @param stdClass $result the result being built; its errors are filled in here.
+     * @return stdClass[]|null the parsed questions and category entries, or null if nothing may be imported.
+     */
+    protected function read_questions(string $file, stdClass $result): ?array {
+        $this->parseerrors = [];
+
+        $lines = $this->readdata($file);
+        if (!$lines) {
+            $result->errors[] = get_string('cannotread', 'question');
+            return null;
+        }
+
+        // Check for at least one question element, which readquestions() needs.
+        $hasquestions = stripos(implode('', $lines), '<question') !== false;
+        $questions = $hasquestions ? $this->readquestions($lines) : false;
+        unset($lines);
+
+        $result->errors = $this->parseerrors;
+        if (!$questions) {
+            $result->errors = $result->errors ?: [get_string('noquestionsinfile', 'question')];
+            return null;
+        }
+        if ($this->stoponerror && $this->importerrors > 0) {
+            return null;
+        }
+        return $questions;
+    }
+
+    /**
      * Decide for each parsed question what happens to it. Does not save anything.
      *
      * @param stdClass[] $questions the parsed questions and category entries.
@@ -204,94 +220,119 @@ class bulk_importer extends qformat_xml {
         $gradeoptions = question_bank::fraction_options_full();
         $rows = [];
         $gradeerrors = 0;
-        $index = 0;
 
         // Questions before the first category in the file go to the category the user selected.
         $category = $this->category;
-        $categorypath = $this->category ? $this->category->name : '';
+        $categorypath = $this->category->name;
         $categoryreason = null;
 
         foreach ($questions as $question) {
             if ($question->qtype === 'category') {
                 if ($this->catfromfile) {
                     $categorypath = $question->category;
-                    [$category, $categoryreason] = $this->find_category($categorypath);
+                    [$category, $categoryreason] = $this->finder->find($this->split_category_path($categorypath));
                 }
                 continue;
             }
 
-            $index++;
-            $row = new stdClass();
-            $row->index = $index;
-            $row->name = $question->name ?? '';
-            $row->category = $categorypath;
-            $row->idnumber = isset($question->idnumber) ? (string) $question->idnumber : '';
-            $row->qtype = $question->qtype;
-            $row->outcome = self::OUTCOME_SKIPPED;
-            $row->reason = null;
-            $row->message = '';
-            $row->questionid = null;
+            $row = $this->create_row(count($rows) + 1, $question, $categorypath);
             $rows[] = $row;
-
-            // Answer grades are checked like the core import does.
-            if (!empty($question->fraction) && is_array($question->fraction)) {
-                $fractions = $question->fraction;
-                $invalid = false;
-                foreach ($fractions as $key => $fraction) {
-                    $newfraction = match_grade_options($gradeoptions, $fraction, $this->matchgrades);
-                    if ($newfraction === false) {
-                        $invalid = true;
-                    } else {
-                        $fractions[$key] = $newfraction;
-                    }
-                }
-                if ($invalid) {
-                    $gradeerrors++;
-                    $row->reason = self::REASON_INVALIDGRADES;
-                    continue;
-                }
-                $question->fraction = $fractions;
-            }
-
-            if ($category === null) {
-                $row->reason = $categoryreason;
+            if (!$this->normalise_grades($question, $gradeoptions)) {
+                $gradeerrors++;
+                $row->reason = self::REASON_INVALIDGRADES;
                 continue;
             }
-            if ($row->idnumber === '') {
-                $row->reason = self::REASON_NOIDNUMBER;
-                continue;
-            }
-
-            $matches = $this->get_entries($category->id)[$row->idnumber] ?? [];
-            if (!$matches) {
-                $row->reason = self::REASON_NOTFOUND;
-                continue;
-            }
-            if (count($matches) > 1) {
-                $row->reason = self::REASON_AMBIGUOUS;
-                continue;
-            }
-            $existing = reset($matches);
-            if ($existing->qtype !== $question->qtype) {
-                $row->reason = self::REASON_TYPEMISMATCH;
-                continue;
-            }
-            if (!question_has_capability_on($existing, 'edit')) {
-                $row->reason = self::REASON_NOPERMISSION;
-                continue;
-            }
-
-            $row->outcome = self::OUTCOME_NEWVERSION;
-            $row->key = $category->id . '|' . $row->idnumber;
-            $row->existing = $existing;
-            $row->question = $question;
+            $this->match_question($row, $question, $category, $categoryreason);
         }
 
-        if ($this->stoponerror && $gradeerrors > 0) {
-            $result->blocked = true;
+        $result->blocked = $this->stoponerror && $gradeerrors > 0;
+        $this->skip_duplicates($rows);
+        return $rows;
+    }
+
+    /**
+     * Create the row for a question from the file. It is skipped until a match is found.
+     *
+     * @param int $index the position of the question in the file, among the questions.
+     * @param stdClass $question the parsed question.
+     * @param string $categorypath the category path to show.
+     * @return stdClass the row.
+     */
+    protected function create_row(int $index, stdClass $question, string $categorypath): stdClass {
+        $row = new stdClass();
+        $row->index = $index;
+        $row->name = $question->name ?? '';
+        $row->category = $categorypath;
+        $row->idnumber = isset($question->idnumber) ? (string) $question->idnumber : '';
+        $row->qtype = $question->qtype;
+        $row->outcome = self::OUTCOME_SKIPPED;
+        $row->reason = null;
+        $row->message = '';
+        $row->questionid = null;
+        return $row;
+    }
+
+    /**
+     * Check the answer grades of a question like the core import does, and replace them by valid ones.
+     *
+     * @param stdClass $question the parsed question.
+     * @param array $gradeoptions the valid grades.
+     * @return bool false if a grade is not valid.
+     */
+    protected function normalise_grades(stdClass $question, array $gradeoptions): bool {
+        if (empty($question->fraction) || !is_array($question->fraction)) {
+            return true;
+        }
+        $fractions = $question->fraction;
+        foreach ($fractions as $key => $fraction) {
+            $newfraction = match_grade_options($gradeoptions, $fraction, $this->matchgrades);
+            if ($newfraction === false) {
+                return false;
+            }
+            $fractions[$key] = $newfraction;
+        }
+        $question->fraction = $fractions;
+        return true;
+    }
+
+    /**
+     * Find the existing question for a question from the file and update its row.
+     *
+     * @param stdClass $row the row of the question.
+     * @param stdClass $question the parsed question.
+     * @param stdClass|null $category the category the question is in, or null if there is none.
+     * @param string|null $categoryreason why there is no category.
+     */
+    protected function match_question(stdClass $row, stdClass $question, ?stdClass $category, ?string $categoryreason): void {
+        if ($category === null) {
+            $row->reason = $categoryreason;
+            return;
+        }
+        if ($row->idnumber === '') {
+            $row->reason = self::REASON_NOIDNUMBER;
+            return;
         }
 
-        // The same category and idnumber twice in the file: we cannot know which one is meant, so skip both.
+        [$existing, $reason] = $this->matcher->find($category->id, $row->idnumber, $question);
+        if ($existing === null) {
+            $row->reason = $reason;
+            return;
+        }
+
+        $row->outcome = self::OUTCOME_NEWVERSION;
+        $row->key = $category->id . '|' . $row->idnumber;
+        $row->existing = $existing;
+        $row->question = $question;
+    }
+
+    /**
+     * Skip every question whose category and idnumber occur more than once in the file.
+     *
+     * We cannot know which of them is meant, so none is imported.
+     *
+     * @param stdClass[] $rows the rows.
+     */
+    protected function skip_duplicates(array $rows): void {
         $seen = [];
         foreach ($rows as $row) {
             if ($row->outcome === self::OUTCOME_NEWVERSION) {
@@ -306,8 +347,22 @@ class bulk_importer extends qformat_xml {
             }
             unset($row->key);
         }
+    }
 
-        return $rows;
+    /**
+     * Save the rows that are to be imported, each in its own transaction.
+     *
+     * @param stdClass[] $rows the rows.
+     * @param bool $mergetags whether to merge tags.
+     * @param bool $force whether to retain a version that has save warnings (as Draft).
+     */
+    protected function save_rows(array $rows, bool $mergetags, bool $force): void {
+        foreach ($rows as $row) {
+            if ($row->outcome === self::OUTCOME_NEWVERSION) {
+                $this->save_row($row, $mergetags, $force);
+            }
+            unset($row->existing, $row->question);
+        }
     }
 
     /**
@@ -352,109 +407,5 @@ class bulk_importer extends qformat_xml {
         if (!empty($saved->notice)) {
             $row->message = $saved->notice;
         }
-    }
-
-    /**
-     * Find the category for a category path from the file, without creating it.
-     *
-     * Follows create_category_path() in the core question format, but only looks.
-     *
-     * @param string $catpath the category path from the file, like $course$/top/parent/child.
-     * @return array [category record or null, reason code or null].
-     */
-    protected function find_category(string $catpath): array {
-        global $DB;
-
-        $catnames = $this->split_category_path($catpath);
-        $contextid = false;
-        if (preg_match('/^\$([a-z]+)\$$/', $catnames[0], $matches)) {
-            $contextid = $this->translator->string_to_context($matches[1]);
-            array_shift($catnames);
-        }
-        if (isset($catnames[0]) && (($catnames[0] != 'top') || (count($catnames) < 3))) {
-            array_unshift($catnames, 'top');
-        }
-
-        if ($this->contextfromfile && $contextid !== false) {
-            $context = context::instance_by_id($contextid, IGNORE_MISSING);
-            if (!$context) {
-                return [null, self::REASON_CATEGORYNOTFOUND];
-            }
-        } else {
-            $context = context::instance_by_id($this->category->contextid);
-        }
-
-        $parent = 0;
-        $category = null;
-        foreach ($catnames as $catname) {
-            if ($parent == 0) {
-                $category = question_get_top_category($context->id, false);
-                if (!$category) {
-                    return [null, self::REASON_CATEGORYNOTFOUND];
-                }
-                $parent = $category->id;
-                continue;
-            }
-            $found = $DB->get_records(
-                'question_categories',
-                ['name' => $catname, 'contextid' => $context->id, 'parent' => $parent],
-                '',
-                '*',
-                0,
-                2
-            );
-            if (!$found) {
-                if ($catname == 'top') {
-                    // Multiple nested top categories from an old export; core skips these too.
-                    continue;
-                }
-                return [null, self::REASON_CATEGORYNOTFOUND];
-            }
-            if (count($found) > 1) {
-                return [null, self::REASON_CATEGORYAMBIGUOUS];
-            }
-            $category = reset($found);
-            $parent = $category->id;
-        }
-
-        // The top category itself holds no questions.
-        if ($category === null || $category->parent == 0) {
-            return [null, self::REASON_CATEGORYNOTFOUND];
-        }
-        return [$category, null];
-    }
-
-    /**
-     * Get the latest version of each question with an idnumber in a category, keyed by idnumber.
-     *
-     * Each question has the properties the single-question importer needs: id (of the latest version),
-     * category, contextid and questionbankentryid, plus qtype and createdby.
-     *
-     * @param int $categoryid the question category id.
-     * @return array[] lists of question records, keyed by idnumber.
-     */
-    protected function get_entries(int $categoryid): array {
-        global $DB;
-
-        if (!isset($this->entrycache[$categoryid])) {
-            $sql = "SELECT qbe.id AS questionbankentryid, qbe.idnumber, qbe.questioncategoryid AS category,
-                           qc.contextid, qv.questionid AS id, q.qtype, q.createdby
-                      FROM {question_bank_entries} qbe
-                      JOIN {question_categories} qc ON qc.id = qbe.questioncategoryid
-                      JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
-                      JOIN {question} q ON q.id = qv.questionid
-                     WHERE qbe.questioncategoryid = :categoryid
-                           AND qbe.idnumber IS NOT NULL
-                           AND q.parent = 0
-                           AND qv.version = (SELECT MAX(qv2.version)
-                                               FROM {question_versions} qv2
-                                              WHERE qv2.questionbankentryid = qbe.id)";
-            $entries = [];
-            foreach ($DB->get_records_sql($sql, ['categoryid' => $categoryid]) as $entry) {
-                $entries[(string) $entry->idnumber][] = $entry;
-            }
-            $this->entrycache[$categoryid] = $entries;
-        }
-        return $this->entrycache[$categoryid];
     }
 }
