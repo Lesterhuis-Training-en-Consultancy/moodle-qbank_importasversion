@@ -16,27 +16,19 @@
 
 namespace qbank_importasversion\form;
 
-use moodleform;
-use qformat_xml;
-use stdClass;
-
 defined('MOODLE_INTERNAL') || die();
-
-require_once($CFG->libdir . '/formslib.php');
-require_once($CFG->dirroot . '/question/format.php');
-require_once($CFG->dirroot . '/question/format/xml/format.php');
 
 /**
  * Form to import many questions from one file, each as a new version of an existing question.
  *
  * The options are those of the core question import, plus the options of the single-question import
- * of this plugin.
+ * of this plugin. The checks on the uploaded file are those of the single-question form.
  *
  * @package   qbank_importasversion
  * @copyright 2026 LT&C
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class bulk_import_form extends moodleform {
+class bulk_import_form extends import_form {
     #[\Override]
     protected function definition() {
         $mform = $this->_form;
@@ -88,47 +80,5 @@ class bulk_import_form extends moodleform {
         $buttons[] = $mform->createElement('cancel');
         $mform->addGroup($buttons, 'buttonar', '', [' '], false);
         $mform->closeHeaderBefore('buttonar');
-    }
-
-    /**
-     * Check that a file has been uploaded, and that it is a plausible Moodle XML file.
-     *
-     * @param array $data the submitted data.
-     * @param array $errors the errors so far.
-     * @return array the updated errors.
-     */
-    protected function validate_uploaded_file($data, $errors) {
-        if (empty($data['newfile'])) {
-            $errors['newfile'] = get_string('required');
-            return $errors;
-        }
-
-        $files = $this->get_draft_files('newfile');
-        if (!is_array($files) || count($files) < 1) {
-            $errors['newfile'] = get_string('required');
-            return $errors;
-        }
-
-        $qformat = new qformat_xml();
-        $file = reset($files);
-        if (!$qformat->can_import_file($file)) {
-            $a = new stdClass();
-            $a->actualtype = $file->get_mimetype();
-            $a->expectedtype = $qformat->mime_type();
-            $errors['newfile'] = get_string('importwrongfiletype', 'question', $a);
-            return $errors;
-        }
-
-        $fileerrors = $qformat->validate_file($file);
-        if ($fileerrors) {
-            $errors['newfile'] = $fileerrors;
-        }
-        return $errors;
-    }
-
-    #[\Override]
-    public function validation($data, $files) {
-        $errors = parent::validation($data, $files);
-        return $this->validate_uploaded_file($data, $errors);
     }
 }

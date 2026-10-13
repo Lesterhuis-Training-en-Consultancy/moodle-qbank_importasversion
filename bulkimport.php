@@ -162,7 +162,14 @@ if ($execute) {
         }
         $confirmurl->param('matchgrades', $options['matchgrades']);
         $label = get_string('confirmimport', 'qbank_importasversion', $counts[bulk_importer::OUTCOME_NEWVERSION]);
-        $buttons .= $OUTPUT->single_button($confirmurl, $label, 'post', ['primary' => true]);
+        // The primary option is deprecated from Moodle 4.4; older versions ignore the type option.
+        $buttonoptions = [];
+        if (defined('\core\output\single_button::BUTTON_PRIMARY')) {
+            $buttonoptions['type'] = \core\output\single_button::BUTTON_PRIMARY;
+        } else {
+            $buttonoptions['primary'] = true;
+        }
+        $buttons .= $OUTPUT->single_button($confirmurl, $label, 'post', $buttonoptions);
     }
     $buttons .= $OUTPUT->single_button($returnurl, get_string('cancel'), 'get');
     echo html_writer::div($buttons, 'd-flex gap-2 mt-3');

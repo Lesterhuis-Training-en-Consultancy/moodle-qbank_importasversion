@@ -26,7 +26,7 @@ Feature: Importing many questions as new versions of existing questions
     When I am on the "Course 1" "core_question > course question bank" page logged in as teacher
     And I select "Import new versions in bulk" from the "Question bank tertiary navigation" singleselect
     Then I should see "Import many questions from one Moodle XML file at once"
-    And I should see "Preview"
+    And "Preview" "button" should exist
 
   @javascript @_file_upload
   Scenario: The dry run shows what would happen and saves nothing
