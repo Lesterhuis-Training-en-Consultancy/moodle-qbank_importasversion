@@ -17,6 +17,7 @@
 namespace qbank_importasversion;
 
 use context;
+use stdClass;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -67,6 +68,23 @@ class category_finder {
             return [null, bulk_importer::REASON_CATEGORYNOTFOUND];
         }
         return $this->walk($this->with_top($catnames), $context);
+    }
+
+    /**
+     * The path of a category as shown to the user: the names from the top down, without the top category.
+     *
+     * @param stdClass $category the category record.
+     * @return string the path, like "Parent / Child".
+     */
+    public function get_path(stdClass $category): string {
+        global $DB;
+
+        $names = [];
+        while ($category && $category->parent) {
+            $names[] = $category->name;
+            $category = $DB->get_record('question_categories', ['id' => $category->parent], 'id, name, parent');
+        }
+        return implode(' / ', array_reverse($names));
     }
 
     /**

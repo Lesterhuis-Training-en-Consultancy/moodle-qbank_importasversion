@@ -268,6 +268,9 @@ final class bulk_importer_test extends \advanced_testcase {
             array_column($result->rows, 'outcome')
         );
         $this->assertSame(bulk_importer::REASON_CATEGORYNOTFOUND, $result->rows[0]->reason);
+        // A category that is not found is shown as in the file, a found one as it is in Moodle.
+        $this->assertSame('Missing', $result->rows[0]->category);
+        $this->assertSame('Cat A', $result->rows[1]->category);
         $this->assertSame($categories, $DB->count_records('question_categories'));
         $this->assertSame(2, $this->latest_version($a->questionbankentryid));
     }
@@ -283,6 +286,7 @@ final class bulk_importer_test extends \advanced_testcase {
         $result = $this->create_importer()->run($file, true);
 
         $this->assertSame([bulk_importer::OUTCOME_IMPORTED], array_column($result->rows, 'outcome'));
+        $this->assertSame('Cat A', $result->rows[0]->category);
         $this->assertSame(2, $this->latest_version($a->questionbankentryid));
     }
 

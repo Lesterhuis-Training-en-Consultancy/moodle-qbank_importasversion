@@ -224,14 +224,15 @@ class bulk_importer extends qformat_xml {
 
         // Questions before the first category in the file go to the category the user selected.
         $category = $this->category;
-        $categorypath = $this->category->name;
+        $categorypath = $this->finder->get_path($this->category);
         $categoryreason = null;
 
         foreach ($questions as $question) {
             if ($question->qtype === 'category') {
                 if ($this->catfromfile) {
-                    $categorypath = $question->category;
-                    [$category, $categoryreason] = $this->finder->find($this->split_category_path($categorypath));
+                    // Show the category in Moodle that the questions are matched in, or the path from the file if it is not found.
+                    [$category, $categoryreason] = $this->finder->find($this->split_category_path($question->category));
+                    $categorypath = $category ? $this->finder->get_path($category) : $question->category;
                 }
                 continue;
             }
